@@ -90,7 +90,7 @@ class SimpleMonitor13(simple_switch_13.SimpleSwitch13):
         self.logger.info('SW id: %d\n', ev.msg.datapath.id)
         
         for stat in sorted(body, key=attrgetter('port_no')):
-        
-            self.logger.info('port: %d', stat.port_no)
-            self.logger.info('tx_pkts: %d', stat.tx_packets)
-            self.logger.info('rx_pkts: %d\n', stat.rx_packets)
+            if stat.port_no < 500: 
+                self.logger.info('port: %d', stat.port_no)
+                self.logger.info('tx_pkts: %d', stat.tx_packets)
+                self.logger.info('rx_pkts: %d\n', stat.rx_packets)
