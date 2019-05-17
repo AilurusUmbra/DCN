@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import time
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
@@ -21,6 +22,10 @@ from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import ether_types
+
+RED = 1
+BLUE = 2
+BLACK = 3
 
 tenant = [[9, 12, 15, 3, 6],
         [10, 13, 16, 4, 1, 7],
@@ -90,6 +95,7 @@ class SimpleSwitch13(app_manager.RyuApp):
         dst = eth.dst
         src = eth.src
 
+        """ Part 1: Isolate traffic of different tenant """
         # isolation check
         host_eth = "00:00:00:00:00:"
         if eth.dst[0:15] == host_eth and eth.src[0:15] == host_eth:
@@ -110,18 +116,128 @@ class SimpleSwitch13(app_manager.RyuApp):
                 print('-'*50)
                 return
 
+        # got dpid
         dpid = datapath.id
         self.mac_to_port.setdefault(dpid, {})
 
         self.logger.info("packet in %s %s %s %s", dpid, src, dst, in_port)
+        
+        """ Part 2: Isolate broadcast traffic """
 
+        # for switches in filter_dpid[i], 
+        # they should filter packets from i-th tenant
+        entry_dpid=[4, 4, 5, 5, 7, 7, 8, 8, 11, 11, 12, 12, 14, 14, 15, 15]
+        filter_dpid = [[4, 8, 14], [7, 12], [5, 11, 15]]
+        leaf_dpid = sum(filter_dpid, []) # Just flatten filter_dpid
+        #print("before", leaf_dpid)
+        #print(src_num, entry_dpid[src_num-1])
+        print("after", leaf_dpid)
+        # filter broadcast packet
+        broadcast_dst = "ff:ff:ff:ff:ff:ff"
+        """if dst == broadcast_dst and eth.src[0:15] == host_eth and dpid in leaf_dpid:
+            # Before pingall
+            src_num = int(eth.src[15:17], 16)
+            tenant_group = vlan_table[src_num-1]
+            # filter all 
+            if dpid in filter_dpid[tenant_group-1]:
+                return
+            else:
+
+            print("group: ",tenant[tenant_group-1])
+            if dst_num in tenant[tenant_group-1]:
+            """
+        if dst == broadcast_dst and eth.src[0:15] == host_eth: 
+            src_num = int(eth.src[15:17], 16)
+            tenant_group = vlan_table[src_num-1]
+            leaf_dpid.remove(entry_dpid[src_num-1])
+        print("dpid",dpid)
+        if dst == broadcast_dst and eth.src[0:15] == host_eth and dpid in leaf_dpid:
+        
+            print("broadcast!",dpid)
+            src_num = int(eth.src[15:17], 16)
+            tenant_group = vlan_table[src_num-1]
+
+            # 1
+            if dpid == 11:
+                if tenant_group == 1:
+                    dst = host_eth + '09'
+                elif tenant_group == 2:
+                    dst = host_eth + '0a'
+                else:
+                    return
+            # 2
+            elif dpid == 12:
+                if tenant_group == 1:
+                    dst = host_eth + '0c'
+                elif tenant_group == 2:
+                    return
+                else:
+                    dst = host_eth + '0b'
+            # 3
+            elif dpid == 14:
+                if tenant_group == 1:
+                    return
+                elif tenant_group == 2:
+                    dst = host_eth + '0d'
+                else:
+                    dst = host_eth + '0e'
+            # 4
+            elif dpid == 15:
+                if tenant_group == 1:
+                    dst = host_eth + '0f'
+                elif tenant_group == 2:
+                    dst = host_eth + '10'
+                else:
+                    return
+            # 5
+            elif dpid == 5:
+                if tenant_group == 1:
+                    dst = host_eth + '03'
+                elif tenant_group == 2:
+                    dst = host_eth + '04'
+                else:
+                    return
+            # 6
+            elif dpid == 4:
+                if tenant_group == 1:
+                    return
+                elif tenant_group == 2:
+                    dst = host_eth + '01'
+                else:
+                    dst = host_eth + '02'
+            # 7
+            elif dpid == 7:
+                if tenant_group == 1:
+                    dst = host_eth + '06'
+                elif tenant_group == 2:
+                    return
+                else:
+                    dst = host_eth + '05'
+            # 8
+            elif dpid == 8:
+                src_num = int(eth.src[15:17], 16)
+                tenant_group = vlan_table[src_num-1]
+                if tenant_group == 1:
+                    return
+                elif tenant_group == 2:
+                    dst = host_eth + '07'
+                else:
+                    dst = host_eth + '08'
+        print(dst)
         # learn a mac address to avoid FLOOD next time.
         self.mac_to_port[dpid][src] = in_port
 
         if dst in self.mac_to_port[dpid]:
             out_port = self.mac_to_port[dpid][dst]
+            #print("dpid:",dpid, self.mac_to_port[dpid])
+            #print("dst:",dst, self.mac_to_port[dpid][dst], out_port)
         else:
             out_port = ofproto.OFPP_FLOOD
+            #print("dst:",dst , out_port)
+
+        src_num = int(eth.src[15:17], 16)
+        if dpid == entry_dpid[src_num-1]:
+            out_port = 3
 
         actions = [parser.OFPActionOutput(out_port)]
 
